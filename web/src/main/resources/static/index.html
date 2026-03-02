@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mintz Construction Estimator</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e; color: #e0e0e0; min-height: 100vh;
+        }
+        .app { max-width: 960px; margin: 0 auto; padding: 20px; }
+        header {
+            text-align: center; padding: 30px 0 20px;
+            border-bottom: 2px solid #e94560;
+        }
+        header h1 { color: #e94560; font-size: 1.8em; margin-bottom: 5px; }
+        header p { color: #888; font-size: 0.9em; }
+        .tabs {
+            display: flex; gap: 0; margin-top: 25px;
+            border-bottom: 2px solid #333;
+        }
+        .tab {
+            padding: 12px 24px; cursor: pointer; background: transparent;
+            border: none; color: #888; font-size: 1em;
+            border-bottom: 2px solid transparent; margin-bottom: -2px;
+            transition: all 0.2s;
+        }
+        .tab:hover { color: #e0e0e0; }
+        .tab.active { color: #e94560; border-bottom-color: #e94560; }
+        .section { padding: 25px 0; }
+        .card {
+            background: #16213e; border-radius: 8px; padding: 24px;
+            margin-bottom: 16px; border: 1px solid #333;
+        }
+        h2 { color: #e94560; margin-bottom: 16px; font-size: 1.2em; }
+        h3 { color: #ccc; margin-bottom: 10px; font-size: 1em; }
+        label { display: block; margin-bottom: 6px; color: #aaa; font-size: 0.85em; }
+        input[type="text"], input[type="number"] {
+            width: 100%; padding: 10px 12px; border-radius: 6px;
+            border: 1px solid #444; background: #0f3460; color: #e0e0e0;
+            font-size: 1em; margin-bottom: 14px;
+        }
+        input:focus { outline: none; border-color: #e94560; }
+        .room-row {
+            display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto;
+            gap: 10px; align-items: end;
+        }
+        button {
+            padding: 10px 20px; border-radius: 6px; border: none;
+            cursor: pointer; font-size: 0.95em; transition: all 0.2s;
+        }
+        .btn-primary { background: #e94560; color: white; }
+        .btn-primary:hover { background: #c73e54; }
+        .btn-secondary { background: #333; color: #ccc; }
+        .btn-secondary:hover { background: #444; }
+        .btn-danger { background: #6b2037; color: #e94560; }
+        .btn-danger:hover { background: #8b2a47; }
+        .btn-small { padding: 6px 12px; font-size: 0.85em; }
+        .actions { display: flex; gap: 10px; margin-top: 10px; }
+        table {
+            width: 100%; border-collapse: collapse; margin-top: 10px;
+        }
+        th, td {
+            padding: 10px 14px; text-align: left;
+            border-bottom: 1px solid #333;
+        }
+        th { color: #e94560; font-weight: 600; font-size: 0.85em; text-transform: uppercase; }
+        td { color: #ccc; }
+        .totals td { font-weight: bold; color: #e94560; border-top: 2px solid #e94560; }
+        .project-card {
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .project-info span { color: #888; font-size: 0.85em; margin-left: 12px; }
+        .msg { padding: 12px; border-radius: 6px; margin-bottom: 16px; }
+        .msg-ok { background: #1a3a2a; color: #4caf50; border: 1px solid #2e7d32; }
+        .msg-err { background: #3a1a1a; color: #ef5350; border: 1px solid #c62828; }
+        .loading { color: #888; text-align: center; padding: 40px; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        const API = '/api/projects';
+
+        // ---- Room Form Row ----
+        function RoomRow({ room, index, onChange, onRemove }) {
+            const update = (field, value) => onChange(index, { ...room, [field]: value });
+            return (
+                <div className="room-row">
+                    <div>
+                        <label>Room Name</label>
+                        <input type="text" value={room.name}
+                            onChange={e => update('name', e.target.value)}
+                            placeholder="e.g. Master Bedroom" />
+                    </div>
+                    <div>
+                        <label>Length (ft)</label>
+                        <input type="number" value={room.length}
+                            onChange={e => update('length', e.target.value)} min="0" step="0.5" />
+                    </div>
+                    <div>
+                        <label>Width (ft)</label>
+                        <input type="number" value={room.width}
+                            onChange={e => update('width', e.target.value)} min="0" step="0.5" />
+                    </div>
+                    <div>
+                        <label>Height (ft)</label>
+                        <input type="number" value={room.height}
+                            onChange={e => update('height', e.target.value)} min="0" step="0.5" />
+                    </div>
+                    <div>
+                        <label>&nbsp;</label>
+                        <button className="btn-danger btn-small" onClick={() => onRemove(index)}>X</button>
+                    </div>
+                </div>
+            );
+        }
+
+        // ---- New Project Form ----
+        function ProjectForm({ onCreated }) {
+            const emptyRoom = { name: '', length: '', width: '', height: '8' };
+            const [name, setName] = useState('');
+            const [rooms, setRooms] = useState([{ ...emptyRoom }]);
+            const [msg, setMsg] = useState(null);
+            const [loading, setLoading] = useState(false);
+
+            const updateRoom = (i, room) => {
+                const copy = [...rooms];
+                copy[i] = room;
+                setRooms(copy);
+            };
+            const removeRoom = (i) => {
+                if (rooms.length > 1) setRooms(rooms.filter((_, idx) => idx !== i));
+            };
+            const addRoom = () => setRooms([...rooms, { ...emptyRoom }]);
+
+            const submit = async () => {
+                if (!name.trim()) { setMsg({ type: 'err', text: 'Enter a project name' }); return; }
+                const validRooms = rooms.filter(r => r.name && r.length > 0 && r.width > 0 && r.height > 0);
+                if (validRooms.length === 0) { setMsg({ type: 'err', text: 'Add at least one room with dimensions' }); return; }
+
+                setLoading(true);
+                try {
+                    const body = {
+                        name: name.trim(),
+                        rooms: validRooms.map(r => ({
+                            name: r.name, length: +r.length, width: +r.width, height: +r.height
+                        }))
+                    };
+                    const res = await fetch(API, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                    if (!res.ok) throw new Error('Server error');
+                    const project = await res.json();
+                    setMsg({ type: 'ok', text: `Project "${project.name}" saved with ${project.rooms.length} room(s)!` });
+                    setName('');
+                    setRooms([{ ...emptyRoom }]);
+                    if (onCreated) onCreated();
+                } catch (e) {
+                    setMsg({ type: 'err', text: 'Failed to save: ' + e.message });
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="section">
+                    {msg && <div className={msg.type === 'ok' ? 'msg msg-ok' : 'msg msg-err'}>{msg.text}</div>}
+                    <div className="card">
+                        <h2>New Project</h2>
+                        <label>Project Name</label>
+                        <input type="text" value={name} onChange={e => setName(e.target.value)}
+                            placeholder="e.g. Mintz Residence" />
+                        <h3>Rooms</h3>
+                        {rooms.map((room, i) => (
+                            <RoomRow key={i} room={room} index={i}
+                                onChange={updateRoom} onRemove={removeRoom} />
+                        ))}
+                        <div className="actions">
+                            <button className="btn-secondary" onClick={addRoom}>+ Add Room</button>
+                            <button className="btn-primary" onClick={submit} disabled={loading}>
+                                {loading ? 'Saving...' : 'Calculate & Save'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ---- Estimate Results Table ----
+        function EstimateResults({ project }) {
+            if (!project || !project.rooms) return null;
+
+            let totals = { area: 0, joists: 0, subfloor: 0, studs: 0, plates: 0, cap: 0, sheathing: 0 };
+            project.rooms.forEach(r => {
+                const e = r.estimate;
+                totals.area += r.length * r.width;
+                totals.joists += e.floorJoists;
+                totals.subfloor += e.subfloorSheets;
+                totals.studs += e.wallStuds;
+                totals.plates += e.plateLumberLf;
+                totals.cap += e.capPlateLf;
+                totals.sheathing += e.sheathingSheets;
+            });
+
+            return (
+                <div className="card">
+                    <h2>{project.name} - Material Estimate</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Room</th><th>Area</th><th>Joists</th>
+                                <th>Subfloor</th><th>Studs</th><th>Plates (lf)</th>
+                                <th>Cap (lf)</th><th>Sheathing</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {project.rooms.map((r, i) => (
+                                <tr key={i}>
+                                    <td>{r.name}<br/><span style={{color:'#666',fontSize:'0.8em'}}>{r.length}' x {r.width}' x {r.height}'</span></td>
+                                    <td>{r.length * r.width} sf</td>
+                                    <td>{r.estimate.floorJoists}</td>
+                                    <td>{r.estimate.subfloorSheets}</td>
+                                    <td>{r.estimate.wallStuds}</td>
+                                    <td>{r.estimate.plateLumberLf}</td>
+                                    <td>{r.estimate.capPlateLf}</td>
+                                    <td>{r.estimate.sheathingSheets}</td>
+                                </tr>
+                            ))}
+                            <tr className="totals">
+                                <td>TOTALS</td><td>{totals.area} sf</td>
+                                <td>{totals.joists}</td><td>{totals.subfloor}</td>
+                                <td>{totals.studs}</td><td>{totals.plates}</td>
+                                <td>{totals.cap}</td><td>{totals.sheathing}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            );
+        }
+
+        // ---- Projects List ----
+        function ProjectList({ refresh }) {
+            const [projects, setProjects] = useState([]);
+            const [selected, setSelected] = useState(null);
+            const [loading, setLoading] = useState(true);
+
+            const loadProjects = async () => {
+                setLoading(true);
+                try {
+                    const res = await fetch(API);
+                    const data = await res.json();
+                    setProjects(data);
+                } catch (e) {
+                    console.error(e);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            useEffect(() => { loadProjects(); }, [refresh]);
+
+            const viewProject = async (id) => {
+                const res = await fetch(`${API}/${id}`);
+                const data = await res.json();
+                setSelected(data);
+            };
+
+            const delProject = async (id) => {
+                await fetch(`${API}/${id}`, { method: 'DELETE' });
+                setSelected(null);
+                loadProjects();
+            };
+
+            if (loading) return <div className="loading">Loading projects...</div>;
+
+            return (
+                <div className="section">
+                    {projects.length === 0 ? (
+                        <div className="card"><p style={{color:'#888'}}>No saved projects yet. Create one above!</p></div>
+                    ) : (
+                        projects.map(p => (
+                            <div className="card" key={p.id}>
+                                <div className="project-card">
+                                    <div className="project-info">
+                                        <strong>{p.name}</strong>
+                                        <span>{p.rooms.length} room(s)</span>
+                                        <span>{p.createdAt ? new Date(p.createdAt).toLocaleDateString() : ''}</span>
+                                    </div>
+                                    <div className="actions">
+                                        <button className="btn-primary btn-small" onClick={() => viewProject(p.id)}>View Estimate</button>
+                                        <button className="btn-danger btn-small" onClick={() => delProject(p.id)}>Delete</button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                    {selected && <EstimateResults project={selected} />}
+                </div>
+            );
+        }
+
+        // ---- Main App ----
+        function App() {
+            const [tab, setTab] = useState('create');
+            const [refreshKey, setRefreshKey] = useState(0);
+
+            return (
+                <div className="app">
+                    <header>
+                        <h1>Mintz Construction Estimator</h1>
+                        <p>Residential Framing Material Calculator - Created by John Mintz</p>
+                    </header>
+                    <div className="tabs">
+                        <button className={`tab ${tab === 'create' ? 'active' : ''}`}
+                            onClick={() => setTab('create')}>New Estimate</button>
+                        <button className={`tab ${tab === 'projects' ? 'active' : ''}`}
+                            onClick={() => { setTab('projects'); setRefreshKey(k => k + 1); }}>Saved Projects</button>
+                    </div>
+                    {tab === 'create' && (
+                        <ProjectForm onCreated={() => setRefreshKey(k => k + 1)} />
+                    )}
+                    {tab === 'projects' && (
+                        <ProjectList refresh={refreshKey} />
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
