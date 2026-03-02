@@ -1,0 +1,59 @@
+services:
+  # ---- PostgreSQL Database ----
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mintz_estimator
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mintz123
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---- Spring Boot Web App + React Frontend ----
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: mintz_estimator
+      DB_USER: postgres
+      DB_PASSWORD: mintz123
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ---- CLI Console App (run on demand) ----
+  # Usage: docker compose run --rm cli
+  cli:
+    build:
+      context: .
+      dockerfile: Dockerfile.cli
+    stdin_open: true
+    tty: true
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: mintz_estimator
+      DB_USER: postgres
+      DB_PASSWORD: mintz123
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - cli
+
+volumes:
+  pgdata:
